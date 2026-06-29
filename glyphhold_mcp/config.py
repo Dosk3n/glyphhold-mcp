@@ -12,6 +12,14 @@ class Settings:
     glyphhold_url: str
     api_key: str
     timeout_seconds: float = 20.0
+    verify_ssl: bool | str = True
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def load_settings() -> Settings:
@@ -20,6 +28,8 @@ def load_settings() -> Settings:
     glyphhold_url = os.getenv("GLYPHHOLD_URL", "").strip()
     api_key = os.getenv("GLYPHHOLD_API_KEY", "").strip()
     timeout = float(os.getenv("GLYPHHOLD_TIMEOUT_SECONDS", "20"))
+    ca_bundle = os.getenv("GLYPHHOLD_CA_BUNDLE", "").strip()
+    verify_ssl: bool | str = ca_bundle or _env_bool("GLYPHHOLD_VERIFY_SSL", True)
 
     if not glyphhold_url:
         raise RuntimeError("GLYPHHOLD_URL is required.")
@@ -30,4 +40,5 @@ def load_settings() -> Settings:
         glyphhold_url=glyphhold_url.rstrip("/"),
         api_key=api_key,
         timeout_seconds=timeout,
+        verify_ssl=verify_ssl,
     )

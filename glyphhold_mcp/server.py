@@ -23,6 +23,7 @@ def _client() -> GlyphHoldClient:
         base_url=settings.glyphhold_url,
         api_key=settings.api_key,
         timeout_seconds=settings.timeout_seconds,
+        verify_ssl=settings.verify_ssl,
     )
 
 
@@ -132,4 +133,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

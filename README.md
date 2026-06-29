@@ -111,6 +111,31 @@ Inside Codex, run:
 
 You should see the `glyphhold` MCP server connected.
 
+## TLS Certificate Errors
+
+If a tool returns an error like:
+
+```text
+[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
+```
+
+Python does not trust the certificate chain for your Glyph Hold URL.
+
+Best fix: point the MCP server at the CA bundle that signs your internal
+certificate:
+
+```text
+GLYPHHOLD_CA_BUNDLE=/path/to/ca-bundle.pem
+```
+
+For a trusted private test deployment, you can disable verification in `.env`:
+
+```text
+GLYPHHOLD_VERIFY_SSL=false
+```
+
+Do not use `GLYPHHOLD_VERIFY_SSL=false` for an internet-facing deployment.
+
 ## Updating
 
 To update the local MCP server later:

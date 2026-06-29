@@ -17,11 +17,13 @@ class GlyphHoldClient:
         base_url: str,
         api_key: str,
         timeout_seconds: float = 20.0,
+        verify_ssl: bool | str = True,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
+        self.verify_ssl = verify_ssl
         self.transport = transport
 
     async def _request(
@@ -40,6 +42,7 @@ class GlyphHoldClient:
             base_url=self.base_url,
             headers=headers,
             timeout=self.timeout_seconds,
+            verify=self.verify_ssl,
             transport=self.transport,
         ) as client:
             response = await client.request(method, path, json=json, params=params)
@@ -166,4 +169,3 @@ class GlyphHoldClient:
             f"/api/v1/secrets/{id_or_name}/reveal",
             json={"purpose": purpose},
         )
-

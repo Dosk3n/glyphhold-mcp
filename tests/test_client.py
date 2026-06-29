@@ -77,3 +77,17 @@ async def test_error_does_not_include_authorization_value() -> None:
     assert "Invalid API key" in str(exc_info.value)
     assert "gh_live_do_not_leak" not in str(exc_info.value)
 
+
+@pytest.mark.asyncio
+async def test_client_accepts_ssl_verification_override() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "ok"})
+
+    client = GlyphHoldClient(
+        base_url="https://glyphhold.example",
+        api_key="gh_live_test",
+        verify_ssl=False,
+        transport=_transport(handler),
+    )
+
+    assert await client.health() == {"status": "ok"}
