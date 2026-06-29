@@ -1,0 +1,30 @@
+[project]
+name = "glyphhold-mcp"
+version = "0.1.0"
+description = "Local MCP server for connecting Codex and other MCP clients to Glyph Hold."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+    "mcp>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.12.0",
+]
+
+[project.scripts]
+glyphhold-mcp = "glyphhold_mcp.server:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
