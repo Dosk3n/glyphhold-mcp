@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from glyphhold_mcp.client import GlyphHoldClient
 from glyphhold_mcp.config import load_settings
+
+MemoryConfidence = Annotated[int, Field(ge=1, le=5, description="Confidence score from 1 to 5.")]
+MemoryLimit = Annotated[int, Field(ge=1, le=100, description="Maximum number of memories.")]
+PrefetchMemoryLimit = Annotated[int, Field(ge=1, le=10, description="Maximum memories to prefetch.")]
+PrefetchChars = Annotated[int, Field(ge=100, le=8000, description="Maximum character budget.")]
+PrefetchTokens = Annotated[int, Field(ge=25, le=2000, description="Maximum token estimate.")]
+PrefetchLevel = Literal["never", "low", "normal", "high", "pinned"]
+SecretValueType = Literal["text", "api_key", "password", "token", "webhook_url", "username", "json"]
 
 mcp = FastMCP(
     "Glyph Hold",
@@ -43,7 +52,7 @@ async def list_categories() -> list[dict[str, Any]]:
 async def search_memories(
     query: str,
     category: str | None = None,
-    limit: int = 10,
+    limit: MemoryLimit = 10,
     include_archived: bool = False,
 ) -> dict[str, Any]:
     """Search Glyph Hold memories with deterministic SQLite FTS."""
@@ -59,9 +68,9 @@ async def search_memories(
 async def prefetch_memories(
     message: str,
     agent: str | None = "codex",
-    max_memories: int = 3,
-    max_chars: int = 1200,
-    max_tokens: int = 300,
+    max_memories: PrefetchMemoryLimit = 3,
+    max_chars: PrefetchChars = 1200,
+    max_tokens: PrefetchTokens = 300,
     summaries_only: bool = True,
 ) -> dict[str, Any]:
     """Ask Glyph Hold for conservative memory context relevant to a message."""
@@ -82,10 +91,14 @@ async def create_memory(
     body: str,
     summary: str | None = None,
     tags: list[str] | None = None,
-    confidence: int = 3,
-    auto_prefetch_level: str = "normal",
+    confidence: MemoryConfidence = 3,
+    auto_prefetch_level: PrefetchLevel = "normal",
 ) -> dict[str, Any]:
-    """Create a Glyph Hold memory after confirming it should be stored durably."""
+    """Create a Glyph Hold memory after confirming it should be stored durably.
+
+    confidence must be 1-5. auto_prefetch_level must be one of never, low,
+    normal, high, or pinned.
+    """
     return await _client().create_memory(
         category_id=category_id,
         title=title,
@@ -102,7 +115,7 @@ async def create_secret(
     name: str,
     value: str,
     description: str | None = None,
-    value_type: str = "text",
+    value_type: SecretValueType = "text",
     service: str | None = None,
     host: str | None = None,
     scope: str | None = None,
