@@ -149,12 +149,37 @@ pip install -e ".[dev]"
 
 ## Tools
 
+Health and categories:
+
 - `glyphhold_health`
 - `list_categories`
+
+Memory tools:
+
+- `list_memories`
+- `get_memory`
 - `search_memories`
 - `prefetch_memories`
+- `find_similar_memories`
+- `prepare_memory_write`
 - `create_memory`
-- `create_secret`
-- `reveal_secret`
+- `update_memory`
+- `update_memory_confidence`
+- `archive_memory`
+- `supersede_memory`
+- `list_memory_revisions`
+- `restore_memory_revision`
+- `delete_memory`
 
-Secret values are only returned by `reveal_secret`.
+Secret tools:
+
+- `search_secrets`
+- `get_secret_metadata`
+- `create_secret`
+- `update_secret`
+- `delete_secret`
+- `reveal_secret`
+- `reveal_secret_env`
+
+Secret values are only returned by `reveal_secret` and `reveal_secret_env`.
+Permanent deletes require an exact confirmation value.

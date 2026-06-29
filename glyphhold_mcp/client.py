@@ -60,11 +60,43 @@ class GlyphHoldClient:
             return None
         return response.json()
 
+    @staticmethod
+    def _params(**values: Any) -> dict[str, Any]:
+        return {key: value for key, value in values.items() if value is not None}
+
+    @staticmethod
+    def _json(**values: Any) -> dict[str, Any]:
+        return {key: value for key, value in values.items() if value is not None}
+
     async def health(self) -> dict[str, Any]:
         return await self._request("GET", "/api/v1/health")
 
     async def list_categories(self) -> list[dict[str, Any]]:
         return await self._request("GET", "/api/v1/categories")
+
+    async def list_memories(
+        self,
+        *,
+        category: str | None = None,
+        tag: str | None = None,
+        include_archived: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET",
+            "/api/v1/memories",
+            params=self._params(
+                category=category,
+                tag=tag,
+                include_archived=include_archived,
+                limit=limit,
+                offset=offset,
+            ),
+        )
+
+    async def get_memory(self, *, memory_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/memories/{memory_id}")
 
     async def search_memories(
         self,
@@ -106,6 +138,48 @@ class GlyphHoldClient:
             },
         )
 
+    async def find_similar_memories(
+        self,
+        *,
+        title: str,
+        body: str,
+        category: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/v1/memories/find-similar",
+            json={
+                "category": category,
+                "title": title,
+                "body": body,
+                "tags": tags or [],
+                "limit": limit,
+            },
+        )
+
+    async def prepare_memory_write(
+        self,
+        *,
+        title: str,
+        body: str,
+        category: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/v1/memories/prepare-write",
+            json={
+                "category": category,
+                "title": title,
+                "body": body,
+                "tags": tags or [],
+                "limit": limit,
+            },
+        )
+
     async def create_memory(
         self,
         *,
@@ -131,6 +205,110 @@ class GlyphHoldClient:
             },
         )
 
+    async def update_memory(
+        self,
+        *,
+        memory_id: str,
+        category_id: str | None = None,
+        title: str | None = None,
+        summary: str | None = None,
+        body: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+        source: str | None = None,
+        confidence: int | None = None,
+        auto_prefetch_level: str | None = None,
+        archived: bool | None = None,
+        superseded_by: str | None = None,
+        change_reason: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PATCH",
+            f"/api/v1/memories/{memory_id}",
+            json=self._json(
+                category_id=category_id,
+                title=title,
+                summary=summary,
+                body=body,
+                tags=tags,
+                metadata=metadata,
+                source=source,
+                confidence=confidence,
+                auto_prefetch_level=auto_prefetch_level,
+                archived=archived,
+                superseded_by=superseded_by,
+                change_reason=change_reason,
+            ),
+        )
+
+    async def delete_memory(self, *, memory_id: str) -> None:
+        return await self._request("DELETE", f"/api/v1/memories/{memory_id}")
+
+    async def update_memory_confidence(
+        self,
+        *,
+        memory_id: str,
+        confidence: int,
+        change_reason: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/v1/memories/{memory_id}/confidence",
+            json=self._json(confidence=confidence, change_reason=change_reason),
+        )
+
+    async def archive_memory(self, *, memory_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/api/v1/memories/{memory_id}/archive", json={})
+
+    async def supersede_memory(self, *, memory_id: str, superseded_by: str) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/v1/memories/{memory_id}/supersede",
+            json={"superseded_by": superseded_by},
+        )
+
+    async def list_memory_revisions(self, *, memory_id: str) -> list[dict[str, Any]]:
+        return await self._request("GET", f"/api/v1/memories/{memory_id}/revisions")
+
+    async def restore_memory_revision(
+        self,
+        *,
+        memory_id: str,
+        revision_id: str,
+        change_reason: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/v1/memories/{memory_id}/revisions/{revision_id}/restore",
+            json=self._json(change_reason=change_reason),
+        )
+
+    async def list_secrets(
+        self,
+        *,
+        query: str | None = None,
+        service: str | None = None,
+        host: str | None = None,
+        scope: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._request(
+            "GET",
+            "/api/v1/secrets",
+            params=self._params(
+                query=query,
+                service=service,
+                host=host,
+                scope=scope,
+                limit=limit,
+                offset=offset,
+            ),
+        )
+
+    async def get_secret_metadata(self, *, id_or_name: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/secrets/{id_or_name}")
+
     async def create_secret(
         self,
         *,
@@ -142,6 +320,8 @@ class GlyphHoldClient:
         host: str | None = None,
         scope: str | None = None,
         tags: list[str] | None = None,
+        allowed_agents: list[str] | None = None,
+        allowed_tools: list[str] | None = None,
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
@@ -155,17 +335,69 @@ class GlyphHoldClient:
                 "host": host,
                 "scope": scope,
                 "tags": tags or [],
+                "allowed_agents": allowed_agents or [],
+                "allowed_tools": allowed_tools or [],
             },
         )
+
+    async def update_secret(
+        self,
+        *,
+        id_or_name: str,
+        name: str | None = None,
+        value: str | None = None,
+        description: str | None = None,
+        value_type: str | None = None,
+        service: str | None = None,
+        host: str | None = None,
+        scope: str | None = None,
+        tags: list[str] | None = None,
+        allowed_agents: list[str] | None = None,
+        allowed_tools: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PATCH",
+            f"/api/v1/secrets/{id_or_name}",
+            json=self._json(
+                name=name,
+                value=value,
+                description=description,
+                value_type=value_type,
+                service=service,
+                host=host,
+                scope=scope,
+                tags=tags,
+                allowed_agents=allowed_agents,
+                allowed_tools=allowed_tools,
+            ),
+        )
+
+    async def delete_secret(self, *, id_or_name: str) -> None:
+        return await self._request("DELETE", f"/api/v1/secrets/{id_or_name}")
 
     async def reveal_secret(
         self,
         *,
         id_or_name: str,
+        requesting_agent: str | None = "codex",
+        tool: str | None = None,
         purpose: str = "MCP reveal requested by Codex",
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"/api/v1/secrets/{id_or_name}/reveal",
-            json={"purpose": purpose},
+            json=self._json(requesting_agent=requesting_agent, tool=tool, purpose=purpose),
+        )
+
+    async def reveal_secret_env(
+        self,
+        *,
+        scope: str | None = None,
+        requesting_agent: str | None = "codex",
+        purpose: str = "MCP env reveal requested by Codex",
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/v1/secrets/env",
+            json=self._json(scope=scope, requesting_agent=requesting_agent, purpose=purpose),
         )

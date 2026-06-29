@@ -44,3 +44,44 @@ async def test_create_secret_schema_has_value_type_enum() -> None:
         "username",
         "json",
     ]
+
+
+@pytest.mark.asyncio
+async def test_memory_management_tools_are_registered() -> None:
+    tools = {tool.name for tool in await mcp.list_tools()}
+
+    assert {
+        "list_memories",
+        "get_memory",
+        "find_similar_memories",
+        "prepare_memory_write",
+        "update_memory",
+        "update_memory_confidence",
+        "archive_memory",
+        "supersede_memory",
+        "list_memory_revisions",
+        "restore_memory_revision",
+        "delete_memory",
+    }.issubset(tools)
+
+
+@pytest.mark.asyncio
+async def test_secret_management_tools_are_registered() -> None:
+    tools = {tool.name for tool in await mcp.list_tools()}
+
+    assert {
+        "search_secrets",
+        "get_secret_metadata",
+        "update_secret",
+        "delete_secret",
+        "reveal_secret_env",
+    }.issubset(tools)
+
+
+@pytest.mark.asyncio
+async def test_delete_tools_require_confirmations() -> None:
+    memory_schema = await _tool_schema("delete_memory")
+    secret_schema = await _tool_schema("delete_secret")
+
+    assert "confirm_title" in memory_schema["required"]
+    assert "confirm_name" in secret_schema["required"]
