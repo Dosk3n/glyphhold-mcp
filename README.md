@@ -20,14 +20,43 @@ GLYPHHOLD_URL=https://glyphhold.example.com
 
 ## Local Setup
 
+Choose a place on your machine where you keep local tool repos. Clone this repo
+there:
+
+```bash
+cd ~/coding_projects
+git clone git@github.com:Dosk3n/glyphhold-mcp.git
+cd glyphhold-mcp
+```
+
+Create the local Python environment:
+
 ```bash
 python3.12 -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
+```
+
+Create the local environment file:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env` and set `GLYPHHOLD_API_KEY` to a key created in Glyph Hold.
+Edit `.env`:
+
+```bash
+nano .env
+```
+
+Set:
+
+```text
+GLYPHHOLD_URL=https://your-glyphhold-host.example.com
+GLYPHHOLD_API_KEY=gh_live_xxxxxxxxxxxxxxxxx
+```
+
+Create `GLYPHHOLD_API_KEY` from the Glyph Hold dashboard.
 
 Useful scopes:
 
@@ -41,23 +70,38 @@ secret values after an explicit user request.
 
 ## Codex CLI Config
 
-Add this to `~/.codex/config.toml`:
+Find the full path to the cloned repo:
+
+```bash
+pwd
+```
+
+If `pwd` prints:
+
+```text
+/home/you/coding_projects/glyphhold-mcp
+```
+
+then add this to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.glyphhold]
-command = "/path/to/glyphhold-mcp/.venv/bin/python"
+command = "/home/you/coding_projects/glyphhold-mcp/.venv/bin/python"
 args = ["-m", "glyphhold_mcp.server"]
-cwd = "/path/to/glyphhold-mcp"
-env_vars = ["GLYPHHOLD_URL", "GLYPHHOLD_API_KEY"]
+cwd = "/home/you/coding_projects/glyphhold-mcp"
 ```
 
-Before starting Codex, export the environment variables:
+Use your real path from `pwd`. The important parts are:
 
-```bash
-export GLYPHHOLD_URL="https://glyphhold.example.com"
-export GLYPHHOLD_API_KEY="gh_live_xxxxxxxxxxxxxxxxx"
-codex
+```text
+command = <repo path>/.venv/bin/python
+cwd     = <repo path>
 ```
+
+You do not need to put the API key in Codex config. The MCP server loads
+`GLYPHHOLD_URL` and `GLYPHHOLD_API_KEY` from the `.env` file in the cloned repo.
+
+Start Codex from any project as normal.
 
 Inside Codex, run:
 
@@ -66,6 +110,17 @@ Inside Codex, run:
 ```
 
 You should see the `glyphhold` MCP server connected.
+
+## Updating
+
+To update the local MCP server later:
+
+```bash
+cd ~/coding_projects/glyphhold-mcp
+git pull
+. .venv/bin/activate
+pip install -e ".[dev]"
+```
 
 ## Tools
 

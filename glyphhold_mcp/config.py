@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
@@ -12,6 +15,8 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    load_dotenv(Path.cwd() / ".env")
+
     glyphhold_url = os.getenv("GLYPHHOLD_URL", "").strip()
     api_key = os.getenv("GLYPHHOLD_API_KEY", "").strip()
     timeout = float(os.getenv("GLYPHHOLD_TIMEOUT_SECONDS", "20"))
