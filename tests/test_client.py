@@ -147,6 +147,71 @@ async def test_error_does_not_include_authorization_value() -> None:
 
     assert "Invalid API key" in str(exc_info.value)
     assert "gh_live_do_not_leak" not in str(exc_info.value)
+    assert exc_info.value.kind == "authentication_error"
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.retryable is False
+    assert exc_info.value.as_tool_error() == {
+        "type": "authentication_error",
+        "message": "Glyph Hold request failed: HTTP 401: Invalid API key",
+        "retryable": False,
+        "status": 401,
+    }
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_safe_and_retryable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    client = GlyphHoldClient(
+        base_url="https://glyphhold.example",
+        api_key="gh_live_do_not_leak",
+        transport=_transport(handler),
+    )
+
+    with pytest.raises(GlyphHoldError) as exc_info:
+        await client.health()
+
+    assert exc_info.value.kind == "timeout"
+    assert exc_info.value.retryable is True
+    assert "gh_live_do_not_leak" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_is_safe_and_retryable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection failed", request=request)
+
+    client = GlyphHoldClient(
+        base_url="https://glyphhold.example",
+        api_key="gh_live_do_not_leak",
+        transport=_transport(handler),
+    )
+
+    with pytest.raises(GlyphHoldError) as exc_info:
+        await client.health()
+
+    assert exc_info.value.kind == "connection_error"
+    assert exc_info.value.retryable is True
+    assert "gh_live_do_not_leak" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_invalid_success_response_is_structured() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="not-json")
+
+    client = GlyphHoldClient(
+        base_url="https://glyphhold.example",
+        api_key="gh_live_test",
+        transport=_transport(handler),
+    )
+
+    with pytest.raises(GlyphHoldError) as exc_info:
+        await client.health()
+
+    assert exc_info.value.kind == "invalid_response"
+    assert exc_info.value.status_code == 200
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,30 @@ import httpx
 
 
 class GlyphHoldError(RuntimeError):
-    pass
+    """A safe, structured failure returned by the Glyph Hold API client."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: str = "glyphhold_error",
+        status_code: int | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.status_code = status_code
+        self.retryable = retryable
+
+    def as_tool_error(self) -> dict[str, Any]:
+        error: dict[str, Any] = {
+            "type": self.kind,
+            "message": str(self),
+            "retryable": self.retryable,
+        }
+        if self.status_code is not None:
+            error["status"] = self.status_code
+        return error
 
 
 class GlyphHoldClient:
@@ -38,27 +61,65 @@ class GlyphHoldClient:
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
         }
-        async with httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=headers,
-            timeout=self.timeout_seconds,
-            verify=self.verify_ssl,
-            transport=self.transport,
-        ) as client:
-            response = await client.request(method, path, json=json, params=params)
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url,
+                headers=headers,
+                timeout=self.timeout_seconds,
+                verify=self.verify_ssl,
+                transport=self.transport,
+            ) as client:
+                response = await client.request(method, path, json=json, params=params)
+        except httpx.TimeoutException as exc:
+            raise GlyphHoldError(
+                "Glyph Hold request timed out.",
+                kind="timeout",
+                retryable=True,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise GlyphHoldError(
+                "Could not connect to Glyph Hold.",
+                kind="connection_error",
+                retryable=True,
+            ) from exc
 
         if response.status_code >= 400:
-            detail = response.text
+            detail = response.reason_phrase or "Request failed"
             try:
                 payload = response.json()
-                detail = str(payload.get("detail") or detail)
+                if isinstance(payload, Mapping):
+                    api_detail = payload.get("detail")
+                    if isinstance(api_detail, str) and api_detail.strip():
+                        detail = api_detail.strip()[:500]
             except ValueError:
                 pass
-            raise GlyphHoldError(f"Glyph Hold request failed: HTTP {response.status_code}: {detail}")
+            status_code = response.status_code
+            kind = {
+                401: "authentication_error",
+                403: "authorization_error",
+                404: "not_found",
+                409: "conflict",
+                422: "validation_error",
+                429: "rate_limited",
+            }.get(status_code, "upstream_error" if status_code >= 500 else "request_error")
+            raise GlyphHoldError(
+                f"Glyph Hold request failed: HTTP {status_code}: {detail}",
+                kind=kind,
+                status_code=status_code,
+                retryable=status_code == 429 or status_code >= 500,
+            )
 
         if not response.content:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise GlyphHoldError(
+                "Glyph Hold returned an invalid JSON response.",
+                kind="invalid_response",
+                status_code=response.status_code,
+                retryable=response.status_code >= 500,
+            ) from exc
 
     @staticmethod
     def _params(**values: Any) -> dict[str, Any]:

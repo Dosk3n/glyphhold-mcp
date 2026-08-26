@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+import inspect
+import logging
+from collections.abc import Awaitable, Callable
+from functools import wraps
+from typing import Annotated, Any, Literal, cast, get_type_hints
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
@@ -13,13 +17,18 @@ MemoryLimit = Annotated[int, Field(ge=1, le=100, description="Maximum number of 
 MemoryListLimit = Annotated[int, Field(ge=1, le=500, description="Maximum number of memories.")]
 MemoryOffset = Annotated[int, Field(ge=0, description="Pagination offset.")]
 SimilarMemoryLimit = Annotated[int, Field(ge=1, le=20, description="Maximum similar memories.")]
-PrefetchMemoryLimit = Annotated[int, Field(ge=1, le=10, description="Maximum memories to prefetch.")]
+PrefetchMemoryLimit = Annotated[
+    int, Field(ge=1, le=10, description="Maximum memories to prefetch.")
+]
 PrefetchChars = Annotated[int, Field(ge=100, le=8000, description="Maximum character budget.")]
 PrefetchTokens = Annotated[int, Field(ge=25, le=2000, description="Maximum token estimate.")]
 PrefetchLevel = Literal["never", "low", "normal", "high", "pinned"]
-SecretLimit = Annotated[int, Field(ge=1, le=500, description="Maximum number of secret metadata records.")]
+SecretLimit = Annotated[
+    int, Field(ge=1, le=500, description="Maximum number of secret metadata records.")
+]
 SecretOffset = Annotated[int, Field(ge=0, description="Pagination offset.")]
 SecretValueType = Literal["text", "api_key", "password", "token", "webhook_url", "username", "json"]
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
     "Glyph Hold",
@@ -41,19 +50,82 @@ def _client() -> GlyphHoldClient:
     )
 
 
+def stable_tool[**P, R](
+    function: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[Any]]:
+    """Keep recoverable tool failures inside normal MCP result payloads.
+
+    Some MCP clients invalidate a connector after receiving a protocol-level
+    tool error. Returning a structured result keeps the connector usable while
+    still giving the agent an explicit, actionable failure.
+    """
+
+    @wraps(function)
+    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> Any:
+        try:
+            return await function(*args, **kwargs)
+        except GlyphHoldError as exc:
+            logger.warning(
+                "Glyph Hold tool %s failed: type=%s status=%s retryable=%s",
+                function.__name__,
+                exc.kind,
+                exc.status_code,
+                exc.retryable,
+            )
+            return {"ok": False, "error": exc.as_tool_error()}
+        except RuntimeError:
+            logger.exception("Glyph Hold tool %s has an invalid configuration", function.__name__)
+            return {
+                "ok": False,
+                "error": {
+                    "type": "configuration_error",
+                    "message": "Glyph Hold MCP configuration is invalid.",
+                    "retryable": False,
+                },
+            }
+        except Exception:
+            logger.exception("Unexpected failure in Glyph Hold tool %s", function.__name__)
+            return {
+                "ok": False,
+                "error": {
+                    "type": "internal_error",
+                    "message": "Glyph Hold MCP encountered an unexpected internal error.",
+                    "retryable": False,
+                },
+            }
+
+    # FastMCP inspects this signature for both input and output schemas. Resolve
+    # postponed annotations, keep the input contract, and allow the structured
+    # error envelope as an alternative output.
+    signature = inspect.signature(function)
+    type_hints = get_type_hints(function, include_extras=True)
+    parameters = [
+        parameter.replace(annotation=type_hints.get(name, parameter.annotation))
+        for name, parameter in signature.parameters.items()
+    ]
+    wrapped.__signature__ = signature.replace(  # type: ignore[attr-defined]
+        parameters=parameters,
+        return_annotation=Any,
+    )
+    return cast(Callable[P, Awaitable[Any]], wrapped)
+
+
 @mcp.tool()
+@stable_tool
 async def glyphhold_health() -> dict[str, Any]:
     """Check the configured Glyph Hold service health and version."""
     return await _client().health()
 
 
 @mcp.tool()
+@stable_tool
 async def list_categories() -> list[dict[str, Any]]:
     """List available Glyph Hold memory categories."""
     return await _client().list_categories()
 
 
 @mcp.tool()
+@stable_tool
 async def list_memories(
     category: str | None = None,
     tag: str | None = None,
@@ -72,12 +144,14 @@ async def list_memories(
 
 
 @mcp.tool()
+@stable_tool
 async def get_memory(memory_id: str) -> dict[str, Any]:
     """Get one Glyph Hold memory by id."""
     return await _client().get_memory(memory_id=memory_id)
 
 
 @mcp.tool()
+@stable_tool
 async def search_memories(
     query: str,
     category: str | None = None,
@@ -94,6 +168,7 @@ async def search_memories(
 
 
 @mcp.tool()
+@stable_tool
 async def prefetch_memories(
     message: str,
     agent: str | None = "codex",
@@ -114,6 +189,7 @@ async def prefetch_memories(
 
 
 @mcp.tool()
+@stable_tool
 async def find_similar_memories(
     title: str,
     body: str,
@@ -132,6 +208,7 @@ async def find_similar_memories(
 
 
 @mcp.tool()
+@stable_tool
 async def prepare_memory_write(
     title: str,
     body: str,
@@ -150,6 +227,7 @@ async def prepare_memory_write(
 
 
 @mcp.tool()
+@stable_tool
 async def create_memory(
     category_id: str,
     title: str,
@@ -176,6 +254,7 @@ async def create_memory(
 
 
 @mcp.tool()
+@stable_tool
 async def update_memory(
     memory_id: str,
     category_id: str | None = None,
@@ -210,6 +289,7 @@ async def update_memory(
 
 
 @mcp.tool()
+@stable_tool
 async def update_memory_confidence(
     memory_id: str,
     confidence: MemoryConfidence,
@@ -224,24 +304,28 @@ async def update_memory_confidence(
 
 
 @mcp.tool()
+@stable_tool
 async def archive_memory(memory_id: str) -> dict[str, Any]:
     """Archive a memory so normal searches and prefetches exclude it."""
     return await _client().archive_memory(memory_id=memory_id)
 
 
 @mcp.tool()
+@stable_tool
 async def supersede_memory(memory_id: str, superseded_by: str) -> dict[str, Any]:
     """Mark one memory as superseded by another memory id."""
     return await _client().supersede_memory(memory_id=memory_id, superseded_by=superseded_by)
 
 
 @mcp.tool()
+@stable_tool
 async def list_memory_revisions(memory_id: str) -> list[dict[str, Any]]:
     """List revision history for one memory."""
     return await _client().list_memory_revisions(memory_id=memory_id)
 
 
 @mcp.tool()
+@stable_tool
 async def restore_memory_revision(
     memory_id: str,
     revision_id: str,
@@ -256,6 +340,7 @@ async def restore_memory_revision(
 
 
 @mcp.tool()
+@stable_tool
 async def delete_memory(memory_id: str, confirm_title: str) -> dict[str, str]:
     """Permanently delete a memory after confirm_title exactly matches the current title."""
     client = _client()
@@ -267,6 +352,7 @@ async def delete_memory(memory_id: str, confirm_title: str) -> dict[str, str]:
 
 
 @mcp.tool()
+@stable_tool
 async def search_secrets(
     query: str | None = None,
     service: str | None = None,
@@ -287,12 +373,14 @@ async def search_secrets(
 
 
 @mcp.tool()
+@stable_tool
 async def get_secret_metadata(id_or_name: str) -> dict[str, Any]:
     """Get secret metadata only by id or name. The secret value is not returned."""
     return await _client().get_secret_metadata(id_or_name=id_or_name)
 
 
 @mcp.tool()
+@stable_tool
 async def create_secret(
     name: str,
     value: str,
@@ -321,6 +409,7 @@ async def create_secret(
 
 
 @mcp.tool()
+@stable_tool
 async def update_secret(
     id_or_name: str,
     name: str | None = None,
@@ -351,6 +440,7 @@ async def update_secret(
 
 
 @mcp.tool()
+@stable_tool
 async def delete_secret(id_or_name: str, confirm_name: str) -> dict[str, str]:
     """Permanently delete a secret after confirm_name exactly matches the current secret name."""
     client = _client()
@@ -362,6 +452,7 @@ async def delete_secret(id_or_name: str, confirm_name: str) -> dict[str, str]:
 
 
 @mcp.tool()
+@stable_tool
 async def reveal_secret(
     id_or_name: str,
     requesting_agent: str | None = "codex",
@@ -378,6 +469,7 @@ async def reveal_secret(
 
 
 @mcp.tool()
+@stable_tool
 async def reveal_secret_env(
     scope: str | None = None,
     requesting_agent: str | None = "codex",

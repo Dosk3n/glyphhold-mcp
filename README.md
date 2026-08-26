@@ -183,3 +183,26 @@ Secret tools:
 
 Secret values are only returned by `reveal_secret` and `reveal_secret_env`.
 Permanent deletes require an exact confirmation value.
+
+## Stable Error Responses
+
+Successful tool responses keep their native Glyph Hold payloads. Recoverable
+HTTP, transport, timeout, configuration, and response errors are returned as
+normal MCP results so one failed request cannot invalidate the client's MCP
+connection:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "not_found",
+    "message": "Glyph Hold request failed: HTTP 404: Secret not found",
+    "retryable": false,
+    "status": 404
+  }
+}
+```
+
+Errors are logged to stderr using the tool name, error type, status, and retry
+classification. Authorization headers, API keys, and secret values are never
+included in MCP error payloads or diagnostic logs.
