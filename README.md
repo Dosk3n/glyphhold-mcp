@@ -1,6 +1,6 @@
 # Glyph Hold MCP connector
 
-Version 2.1.1 is a local stdio MCP server for Codex and other MCP clients. It uses
+Version 2.1.2 is a local stdio MCP server for Codex and other MCP clients. It uses
 Glyph Hold 2's public `/api/v2` HTTP API and never opens the server's SQLite file.
 Upgrade this connector alongside the server; version 0.1.0 is for GH1.
 
@@ -76,7 +76,7 @@ retain both values for user review; never blindly overwrite or export plaintext.
 Provider outages fail explicitly rather than look like an empty vault. Upgrade
 the server and adapters together to use these operations.
 
-### 2.1.1 search and migration recovery
+### 2.1.2 search and migration recovery
 
 `search_secrets(query=...)` also matches saved website addresses and hostnames,
 including IP addresses. Metadata adds `websites` (normalised origins only) and
