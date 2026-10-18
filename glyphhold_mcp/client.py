@@ -5,6 +5,22 @@ from typing import Any
 
 import httpx
 
+SAFE_VAULT_ERRORS = {
+    "vault_item_not_found": "Vault item not found; search again and use a current ID",
+    "vault_unavailable": "External vault unavailable; test the saved connection.",
+    "secret_values_differ": "Values differ; both secrets retained. Ask the user.",
+    "vault_status_failed": "Vault status failed. Test the saved connection or repeat this read.",
+    "vault_config_failed": "Vault config failed. Test the saved connection or repeat this read.",
+    "vault_login_failed": "Vault login failed. Test the saved connection or repeat this read.",
+    "vault_unlock_failed": "Vault unlock failed. Test the saved connection or repeat this read.",
+    "vault_sync_failed": "Vault sync failed. Test the saved connection or repeat this read.",
+    "vault_get_failed": "Vault get failed. Test the saved connection or repeat this read.",
+    "vault_list_failed": "Vault list failed. Test the saved connection or repeat this read.",
+    "vault_create_failed": "Vault create failed. Check the destination before retrying.",
+    "vault_edit_failed": "Vault edit failed. Check the destination before retrying.",
+    "vault_operation_failed": "Vault operation failed. Test the saved connection.",
+}
+
 
 class GlyphHoldError(RuntimeError):
     """A safe, structured failure returned by the Glyph Hold API client."""
@@ -95,6 +111,8 @@ class GlyphHoldClient:
                         detail = api_detail.strip()[:500]
             except ValueError:
                 pass
+            code = response.headers.get("X-GlyphHold-Error", "")
+            detail = SAFE_VAULT_ERRORS.get(code, detail)
             status_code = response.status_code
             kind = {
                 401: "authentication_error",
@@ -108,7 +126,8 @@ class GlyphHoldClient:
                 f"Glyph Hold request failed: HTTP {status_code}: {detail}",
                 kind=kind,
                 status_code=status_code,
-                retryable=status_code == 429 or status_code >= 500,
+                retryable=(status_code == 429 or status_code >= 500)
+                and code not in {"vault_create_failed", "vault_edit_failed"},
             )
 
         if not response.content:
@@ -331,6 +350,7 @@ class GlyphHoldClient:
         target_id: str | None = None,
         field: str | None = None,
         folder_id: str | None = None,
+        dry_run: bool = False,
     ):
         from urllib.parse import quote
 
@@ -342,5 +362,6 @@ class GlyphHoldClient:
                 target_id=target_id,
                 field=field,
                 folder_id=folder_id,
+                **({"dry_run": True} if dry_run else {}),
             ),
         )

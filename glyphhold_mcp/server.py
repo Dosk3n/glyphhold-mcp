@@ -312,7 +312,7 @@ async def get_placement_guidance(space_id: str | None = None) -> dict[str, Any]:
 async def search_secrets(
     query: str = "", space_id: str | None = None, provider_name: str | None = None
 ) -> dict[str, Any]:
-    """Search global secret metadata in the active vault plus built-in storage. provider_name=builtin allows local-only access during a vault outage. No values are returned."""
+    """Search global secret metadata by name, folder, saved website address or hostname. provider_name=builtin allows local-only access during a vault outage. No values are returned."""
     return await _client().search_secrets(
         query=query, space_id=space_id, provider_name=provider_name
     )
@@ -395,14 +395,16 @@ async def migrate_secret(
     target_id: str | None = None,
     field: str | None = None,
     folder_id: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Transfer a built-in secret directly to the vault without exposing its value. Search first: pass an existing target_id and field to verify identical values, or omit target_id to create only if the name is unused. Different values require user review; neither is overwritten."""
+    """Transfer a built-in secret directly to the vault without exposing its value. Search first: pass an existing target_id and field to verify identical values, or omit target_id to create only if the name is unused. Different values require user review; neither is overwritten. Use dry_run=true to preview without changes."""
     return await _client().migrate_secret(
         id_or_name=id_or_name,
         expected_version=expected_version,
         target_id=target_id,
         field=field,
         folder_id=folder_id,
+        dry_run=dry_run,
     )
 
 

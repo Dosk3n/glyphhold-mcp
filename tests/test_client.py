@@ -229,3 +229,25 @@ async def test_global_secret_provider_fields_folders_and_transfer():
     assert calls[2][2] == {"field": "login.username"}
     assert calls[3][2]["expected_version"] == "revision"
     assert calls[4][1] == "/api/v2/secrets/sec_old/migrate"
+
+
+@pytest.mark.asyncio
+async def test_preview_payload_and_uncertain_write_not_marked_retryable():
+    calls = []
+
+    def handle(request):
+        calls.append(json.loads(request.content))
+        return httpx.Response(
+            503,
+            headers={"X-GlyphHold-Error": "vault_create_failed"},
+            json={"detail": "private-secret-value"},
+        )
+
+    client = GlyphHoldClient(
+        base_url="http://gh", api_key="test", transport=httpx.MockTransport(handle)
+    )
+    with pytest.raises(GlyphHoldError) as exc:
+        await client.migrate_secret(id_or_name="sec_test", expected_version=1, dry_run=True)
+    assert calls[0]["dry_run"] is True
+    assert not exc.value.retryable and "private-secret-value" not in str(exc.value)
+    assert "Check the destination" in str(exc.value)
