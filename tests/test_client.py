@@ -237,6 +237,7 @@ async def test_preview_payload_and_uncertain_write_not_marked_retryable():
 
     def handle(request):
         calls.append(json.loads(request.content))
+        assert request.url.path.endswith("/migrate/preview")
         return httpx.Response(
             503,
             headers={"X-GlyphHold-Error": "vault_create_failed"},

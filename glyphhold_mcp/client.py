@@ -356,7 +356,9 @@ class GlyphHoldClient:
 
         return await self._request(
             "POST",
-            "/api/v2/secrets/" + quote(id_or_name, safe="") + "/migrate",
+            "/api/v2/secrets/"
+            + quote(id_or_name, safe="")
+            + ("/migrate/preview" if dry_run else "/migrate"),
             json=self._json(
                 expected_version=expected_version,
                 target_id=target_id,
