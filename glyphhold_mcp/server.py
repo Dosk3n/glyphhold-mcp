@@ -309,9 +309,13 @@ async def get_placement_guidance(space_id: str | None = None) -> dict[str, Any]:
 
 @mcp.tool()
 @stable_tool
-async def search_secrets(query: str = "", space_id: str | None = None) -> dict[str, Any]:
-    """Search secret metadata; no values are returned."""
-    return await _client().search_secrets(query=query, space_id=space_id)
+async def search_secrets(
+    query: str = "", space_id: str | None = None, provider_name: str | None = None
+) -> dict[str, Any]:
+    """Search global secret metadata in the active vault plus built-in storage. provider_name=builtin allows local-only access during a vault outage. No values are returned."""
+    return await _client().search_secrets(
+        query=query, space_id=space_id, provider_name=provider_name
+    )
 
 
 @mcp.tool()
@@ -329,21 +333,77 @@ async def get_secret_metadata(id_or_name: str, space_id: str | None = None) -> d
 async def create_secret(
     name: str,
     value: str,
-    space_id: str,
+    space_id: str | None = None,
     description: str | None = None,
     value_type: SecretValueType = "text",
+    folder_id: str | None = None,
+    username: str | None = None,
+    uri: str | None = None,
 ) -> dict[str, Any]:
-    """Store reusable operational credentials in an explicit permitted space."""
+    """Create in the active provider after searching for duplicates. Secrets are global. Optional folder_id selects a vault folder; empty string means unfiled, omission uses the default. space_id is deprecated."""
     return await _client().create_secret(
-        name=name, value=value, space_id=space_id, description=description, value_type=value_type
+        name=name,
+        value=value,
+        space_id=space_id,
+        description=description,
+        value_type=value_type,
+        folder_id=folder_id,
+        username=username,
+        uri=uri,
     )
 
 
 @mcp.tool()
 @stable_tool
-async def reveal_secret(id_or_name: str, space_id: str | None = None) -> dict[str, Any]:
-    """Reveal one secret for an explicit user request or authorised task requiring it."""
-    return await _client().reveal_secret(id_or_name=id_or_name, space_id=space_id)
+async def reveal_secret(
+    id_or_name: str, space_id: str | None = None, field: str | None = None
+) -> dict[str, Any]:
+    """Explicitly reveal one field for an authorised task. Use metadata fields to select username, password, SSH key, notes or custom fields."""
+    return await _client().reveal_secret(id_or_name=id_or_name, space_id=space_id, field=field)
+
+
+@mcp.tool()
+@stable_tool
+async def list_secret_folders() -> dict[str, Any]:
+    """List optional vault folders. Built-in storage returns supported=false."""
+    return await _client().list_secret_folders()
+
+
+@mcp.tool()
+@stable_tool
+async def create_secret_folder(name: str) -> dict[str, Any]:
+    """Create a vault folder after checking existing folders. Requires external writes."""
+    return await _client().create_secret_folder(name=name)
+
+
+@mcp.tool()
+@stable_tool
+async def update_secret(
+    id_or_name: str, expected_version: int | str, value: str, field: str | None = None
+) -> dict[str, Any]:
+    """Update one explicitly selected secret field using its current metadata version. Never overwrite a conflicting value without authorisation."""
+    return await _client().update_secret(
+        id_or_name=id_or_name, expected_version=expected_version, value=value, field=field
+    )
+
+
+@mcp.tool()
+@stable_tool
+async def migrate_secret(
+    id_or_name: str,
+    expected_version: int,
+    target_id: str | None = None,
+    field: str | None = None,
+    folder_id: str | None = None,
+) -> dict[str, Any]:
+    """Transfer a built-in secret directly to the vault without exposing its value. Search first: pass an existing target_id and field to verify identical values, or omit target_id to create only if the name is unused. Different values require user review; neither is overwritten."""
+    return await _client().migrate_secret(
+        id_or_name=id_or_name,
+        expected_version=expected_version,
+        target_id=target_id,
+        field=field,
+        folder_id=folder_id,
+    )
 
 
 def main() -> None:

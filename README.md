@@ -1,6 +1,6 @@
 # Glyph Hold MCP connector
 
-Version 2.0.0 is a local stdio MCP server for Codex and other MCP clients. It uses
+Version 2.1.0 is a local stdio MCP server for Codex and other MCP clients. It uses
 Glyph Hold 2's public `/api/v2` HTTP API and never opens the server's SQLite file.
 Upgrade this connector alongside the server; version 0.1.0 is for GH1.
 
@@ -37,7 +37,7 @@ changed by this source upgrade.
   deliberate per-conversation routing and owner-confirmed associations. Supply
   the same unique session ID to context, search/recall and create operations.
 - Secret metadata and explicit per-secret reveal remain separate and work with
-  built-in or Vaultwarden providers. Secret creation requires an explicit space.
+  built-in or Vaultwarden providers. Secrets are global and independent of memory spaces.
 - Destructive delete, bulk environment reveal and lexical conflict claims are
   removed from this GH2 surface.
 
@@ -51,3 +51,27 @@ transport safety, idempotent/versioned writes and explicit reveal paths. The GH2
 checkout also has local cross-repository ASGI conformance tests covering this
 client, Hermes and Nexus against the actual backend. Live host setup and network
 connectivity still need a deployment rehearsal.
+
+## Live secret providers (2.1)
+
+With Vaultwarden enabled, search and metadata read all accessible vault entries
+directly, including pre-existing items. Built-in secrets remain accessible.
+Secret `space_id` is accepted for compatibility but no longer scopes access;
+API keys still require secret permissions. Memory spaces are unchanged.
+
+`create_secret` uses the active provider and rejects duplicate names. Optional
+`folder_id` chooses a vault folder; omission uses the configured default and an
+empty string means unfiled. `list_secret_folders` and `create_secret_folder`
+manage optional folders. No memory-to-folder mapping or item linking is needed.
+
+`reveal_secret(field=...)` selects a field from metadata (password, username,
+SSH keys, notes, card/identity or custom fields). `update_secret` requires the
+current metadata version and preserves other fields. External changes cannot
+be made atomically against concurrent edits in other Bitwarden clients.
+
+`migrate_secret` transfers a built-in secret without exposing its value to the
+agent. Search first: provide an existing `target_id` and field to verify equal
+values, or omit target ID to create only when the name is unused. Conflicts
+retain both values for user review; never blindly overwrite or export plaintext.
+Provider outages fail explicitly rather than look like an empty vault. Upgrade
+the server and adapters together to use these operations.

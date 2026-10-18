@@ -190,3 +190,42 @@ async def test_client_accepts_ssl_verification_override() -> None:
     )
 
     assert await client.health() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_global_secret_provider_fields_folders_and_transfer():
+    calls = []
+
+    def handle(request):
+        calls.append(
+            (
+                request.method,
+                request.url.path,
+                json.loads(request.content) if request.content else None,
+            )
+        )
+        return httpx.Response(200, json={"ok": True})
+
+    client = GlyphHoldClient(
+        base_url="http://gh", api_key="test", transport=httpx.MockTransport(handle)
+    )
+    await client.create_secret(name="Token", value="test", folder_id="home")
+    await client.list_secret_folders()
+    await client.reveal_secret(id_or_name="vw:account:item", field="login.username")
+    await client.update_secret(
+        id_or_name="vw:account:item",
+        expected_version="revision",
+        value="new-test",
+        field="login.password",
+    )
+    await client.migrate_secret(
+        id_or_name="sec_old",
+        expected_version=1,
+        target_id="vw:account:item",
+        field="login.password",
+    )
+    assert calls[0][2]["folder_id"] == "home" and "space_id" not in calls[0][2]
+    assert calls[1][1] == "/api/v2/secrets/folders"
+    assert calls[2][2] == {"field": "login.username"}
+    assert calls[3][2]["expected_version"] == "revision"
+    assert calls[4][1] == "/api/v2/secrets/sec_old/migrate"

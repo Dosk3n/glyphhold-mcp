@@ -249,9 +249,13 @@ class GlyphHoldClient:
             "GET", "/api/v2/guidance", params=self._params(space_id=space_id)
         )
 
-    async def search_secrets(self, *, query: str = "", space_id: str | None = None):
+    async def search_secrets(
+        self, *, query: str = "", space_id: str | None = None, provider_name: str | None = None
+    ):
         return await self._request(
-            "GET", "/api/v2/secrets", params=self._params(query=query, space_id=space_id)
+            "GET",
+            "/api/v2/secrets",
+            params=self._params(query=query, space_id=space_id, provider_name=provider_name),
         )
 
     async def get_secret_metadata(self, *, id_or_name: str, space_id: str | None = None):
@@ -268,9 +272,12 @@ class GlyphHoldClient:
         *,
         name: str,
         value: str,
-        space_id: str,
+        space_id: str | None = None,
         description: str | None = None,
         value_type: str = "text",
+        folder_id: str | None = None,
+        username: str | None = None,
+        uri: str | None = None,
     ):
         return await self._request(
             "POST",
@@ -281,15 +288,59 @@ class GlyphHoldClient:
                 space_id=space_id,
                 description=description,
                 value_type=value_type,
+                folder_id=folder_id,
+                username=username,
+                uri=uri,
             ),
         )
 
-    async def reveal_secret(self, *, id_or_name: str, space_id: str | None = None):
+    async def reveal_secret(
+        self, *, id_or_name: str, space_id: str | None = None, field: str | None = None
+    ):
         from urllib.parse import quote
 
         return await self._request(
             "POST",
             "/api/v2/secrets/" + quote(id_or_name, safe="") + "/reveal",
-            json={},
+            json=self._json(field=field),
             params=self._params(space_id=space_id),
+        )
+
+    async def list_secret_folders(self):
+        return await self._request("GET", "/api/v2/secrets/folders")
+
+    async def create_secret_folder(self, *, name: str):
+        return await self._request("POST", "/api/v2/secrets/folders", json={"name": name})
+
+    async def update_secret(
+        self, *, id_or_name: str, expected_version: int | str, value: str, field: str | None = None
+    ):
+        from urllib.parse import quote
+
+        return await self._request(
+            "PATCH",
+            "/api/v2/secrets/" + quote(id_or_name, safe=""),
+            json=self._json(expected_version=expected_version, value=value, field=field),
+        )
+
+    async def migrate_secret(
+        self,
+        *,
+        id_or_name: str,
+        expected_version: int,
+        target_id: str | None = None,
+        field: str | None = None,
+        folder_id: str | None = None,
+    ):
+        from urllib.parse import quote
+
+        return await self._request(
+            "POST",
+            "/api/v2/secrets/" + quote(id_or_name, safe="") + "/migrate",
+            json=self._json(
+                expected_version=expected_version,
+                target_id=target_id,
+                field=field,
+                folder_id=folder_id,
+            ),
         )
