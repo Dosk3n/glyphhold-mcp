@@ -1,12 +1,13 @@
 [project]
 name = "glyphhold-mcp"
-version = "0.1.0"
+version = "2.0.0"
 description = "Local MCP server for connecting Codex and other MCP clients to Glyph Hold."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.0",
-    "mcp>=1.24.0",
+    "mcp>=1.24.0,<2",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]

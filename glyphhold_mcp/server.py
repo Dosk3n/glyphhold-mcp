@@ -20,7 +20,7 @@ SimilarMemoryLimit = Annotated[int, Field(ge=1, le=20, description="Maximum simi
 PrefetchMemoryLimit = Annotated[
     int, Field(ge=1, le=10, description="Maximum memories to prefetch.")
 ]
-PrefetchChars = Annotated[int, Field(ge=100, le=8000, description="Maximum character budget.")]
+PrefetchChars = Annotated[int, Field(ge=256, le=8000, description="Maximum character budget.")]
 PrefetchTokens = Annotated[int, Field(ge=25, le=2000, description="Maximum token estimate.")]
 PrefetchLevel = Literal["never", "low", "normal", "high", "pinned"]
 SecretLimit = Annotated[
@@ -113,40 +113,42 @@ def stable_tool[**P, R](
 @mcp.tool()
 @stable_tool
 async def glyphhold_health() -> dict[str, Any]:
-    """Check the configured Glyph Hold service health and version."""
+    """Check service health."""
     return await _client().health()
 
 
 @mcp.tool()
 @stable_tool
+async def glyphhold_capabilities() -> dict[str, Any]:
+    """Discover permitted spaces, defaults and GH2 features."""
+    return await _client().capabilities()
+
+
+@mcp.tool()
+@stable_tool
 async def list_categories() -> list[dict[str, Any]]:
-    """List available Glyph Hold memory categories."""
+    """List categories; these classify records and do not grant access."""
     return await _client().list_categories()
 
 
 @mcp.tool()
 @stable_tool
 async def list_memories(
-    category: str | None = None,
-    tag: str | None = None,
+    space_id: str | None = None,
     include_archived: bool = False,
     limit: MemoryListLimit = 100,
     offset: MemoryOffset = 0,
-) -> list[dict[str, Any]]:
-    """List Glyph Hold memories, optionally filtered by category, tag, and archive state."""
+) -> dict[str, Any]:
+    """List permitted records with versions and ownership."""
     return await _client().list_memories(
-        category=category,
-        tag=tag,
-        include_archived=include_archived,
-        limit=limit,
-        offset=offset,
+        space_id=space_id, include_archived=include_archived, limit=limit, offset=offset
     )
 
 
 @mcp.tool()
 @stable_tool
 async def get_memory(memory_id: str) -> dict[str, Any]:
-    """Get one Glyph Hold memory by id."""
+    """Read a record and its current version."""
     return await _client().get_memory(memory_id=memory_id)
 
 
@@ -154,16 +156,20 @@ async def get_memory(memory_id: str) -> dict[str, Any]:
 @stable_tool
 async def search_memories(
     query: str,
-    category: str | None = None,
+    space_id: str | None = None,
+    session_id: str | None = None,
+    broaden: bool = False,
     limit: MemoryLimit = 10,
-    include_archived: bool = False,
+    max_chars: int = 12000,
 ) -> dict[str, Any]:
-    """Search Glyph Hold memories with deterministic SQLite FTS."""
+    """Search active space; explicitly broaden across permitted spaces as needed."""
     return await _client().search_memories(
         query=query,
-        category=category,
+        space_id=space_id,
+        session_id=session_id,
+        broaden=broaden,
         limit=limit,
-        include_archived=include_archived,
+        max_chars=max_chars,
     )
 
 
@@ -171,83 +177,49 @@ async def search_memories(
 @stable_tool
 async def prefetch_memories(
     message: str,
-    agent: str | None = "codex",
-    max_memories: PrefetchMemoryLimit = 3,
-    max_chars: PrefetchChars = 1200,
-    max_tokens: PrefetchTokens = 300,
-    summaries_only: bool = True,
+    space_id: str | None = None,
+    session_id: str | None = None,
+    max_memories: PrefetchMemoryLimit = 5,
+    max_chars: PrefetchChars = 2400,
 ) -> dict[str, Any]:
-    """Ask Glyph Hold for conservative memory context relevant to a message."""
+    """Recall bounded, traceable active and permitted General context."""
     return await _client().prefetch_memories(
         message=message,
-        agent=agent,
+        space_id=space_id,
+        session_id=session_id,
         max_memories=max_memories,
         max_chars=max_chars,
-        max_tokens=max_tokens,
-        summaries_only=summaries_only,
-    )
-
-
-@mcp.tool()
-@stable_tool
-async def find_similar_memories(
-    title: str,
-    body: str,
-    category: str | None = None,
-    tags: list[str] | None = None,
-    limit: SimilarMemoryLimit = 5,
-) -> dict[str, Any]:
-    """Find existing memories that may duplicate or overlap proposed memory content."""
-    return await _client().find_similar_memories(
-        title=title,
-        body=body,
-        category=category,
-        tags=tags,
-        limit=limit,
-    )
-
-
-@mcp.tool()
-@stable_tool
-async def prepare_memory_write(
-    title: str,
-    body: str,
-    category: str | None = None,
-    tags: list[str] | None = None,
-    limit: SimilarMemoryLimit = 5,
-) -> dict[str, Any]:
-    """Check likely duplicates and conflicts before creating a durable memory."""
-    return await _client().prepare_memory_write(
-        title=title,
-        body=body,
-        category=category,
-        tags=tags,
-        limit=limit,
     )
 
 
 @mcp.tool()
 @stable_tool
 async def create_memory(
-    category_id: str,
     title: str,
     body: str,
+    idempotency_key: str,
+    space_id: str | None = None,
+    session_id: str | None = None,
+    category_id: str | None = None,
     summary: str | None = None,
     tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+    source: str | None = None,
     confidence: MemoryConfidence = 3,
     auto_prefetch_level: PrefetchLevel = "normal",
 ) -> dict[str, Any]:
-    """Create a Glyph Hold memory after confirming it should be stored durably.
-
-    confidence must be 1-5. auto_prefetch_level must be one of never, low,
-    normal, high, or pinned.
-    """
+    """Save a durable memory after search. Reuse the idempotency key for retries."""
     return await _client().create_memory(
-        category_id=category_id,
         title=title,
         body=body,
+        idempotency_key=idempotency_key,
+        space_id=space_id,
+        session_id=session_id,
+        category_id=category_id,
         summary=summary,
-        tags=tags,
+        tags=tags or [],
+        metadata=metadata or {},
+        source=source,
         confidence=confidence,
         auto_prefetch_level=auto_prefetch_level,
     )
@@ -257,126 +229,99 @@ async def create_memory(
 @stable_tool
 async def update_memory(
     memory_id: str,
-    category_id: str | None = None,
+    expected_version: int,
     title: str | None = None,
-    summary: str | None = None,
     body: str | None = None,
+    summary: str | None = None,
     tags: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
-    source: str | None = None,
-    confidence: MemoryConfidence | None = None,
-    auto_prefetch_level: PrefetchLevel | None = None,
-    archived: bool | None = None,
-    superseded_by: str | None = None,
+    last_verified_at: str | None = None,
     change_reason: str | None = None,
 ) -> dict[str, Any]:
-    """Update an existing memory only when the user intends to change stored long-term context."""
+    """Update using the last-read version; reread and reconcile after conflicts."""
     return await _client().update_memory(
         memory_id=memory_id,
-        category_id=category_id,
+        expected_version=expected_version,
         title=title,
-        summary=summary,
         body=body,
+        summary=summary,
         tags=tags,
         metadata=metadata,
-        source=source,
-        confidence=confidence,
-        auto_prefetch_level=auto_prefetch_level,
-        archived=archived,
-        superseded_by=superseded_by,
+        last_verified_at=last_verified_at,
         change_reason=change_reason,
     )
 
 
 @mcp.tool()
 @stable_tool
-async def update_memory_confidence(
-    memory_id: str,
-    confidence: MemoryConfidence,
-    change_reason: str | None = None,
-) -> dict[str, Any]:
-    """Update a memory confidence score from 1 to 5."""
-    return await _client().update_memory_confidence(
-        memory_id=memory_id,
-        confidence=confidence,
-        change_reason=change_reason,
+async def archive_memory(memory_id: str, expected_version: int) -> dict[str, Any]:
+    """Archive a memory reversibly with concurrency protection."""
+    return await _client().archive_memory(memory_id=memory_id, expected_version=expected_version)
+
+
+@mcp.tool()
+@stable_tool
+async def move_memory(memory_id: str, space_id: str, expected_version: int) -> dict[str, Any]:
+    """Explicitly move ownership; requires write grants in both spaces."""
+    return await _client().move_memory(
+        memory_id=memory_id, space_id=space_id, expected_version=expected_version
     )
 
 
 @mcp.tool()
 @stable_tool
-async def archive_memory(memory_id: str) -> dict[str, Any]:
-    """Archive a memory so normal searches and prefetches exclude it."""
-    return await _client().archive_memory(memory_id=memory_id)
-
-
-@mcp.tool()
-@stable_tool
-async def supersede_memory(memory_id: str, superseded_by: str) -> dict[str, Any]:
-    """Mark one memory as superseded by another memory id."""
-    return await _client().supersede_memory(memory_id=memory_id, superseded_by=superseded_by)
-
-
-@mcp.tool()
-@stable_tool
-async def list_memory_revisions(memory_id: str) -> list[dict[str, Any]]:
-    """List revision history for one memory."""
+async def list_memory_revisions(memory_id: str) -> dict[str, Any]:
+    """Inspect permitted historical snapshots."""
     return await _client().list_memory_revisions(memory_id=memory_id)
 
 
 @mcp.tool()
 @stable_tool
 async def restore_memory_revision(
-    memory_id: str,
-    revision_id: str,
-    change_reason: str | None = None,
+    memory_id: str, revision_id: str, expected_version: int
 ) -> dict[str, Any]:
-    """Restore a memory from a previous revision."""
+    """Restore a permitted revision while checking concurrent edits."""
     return await _client().restore_memory_revision(
-        memory_id=memory_id,
-        revision_id=revision_id,
-        change_reason=change_reason,
+        memory_id=memory_id, revision_id=revision_id, expected_version=expected_version
     )
 
 
 @mcp.tool()
 @stable_tool
-async def delete_memory(memory_id: str, confirm_title: str) -> dict[str, str]:
-    """Permanently delete a memory after confirm_title exactly matches the current title."""
-    client = _client()
-    memory = await client.get_memory(memory_id=memory_id)
-    if memory["title"] != confirm_title:
-        raise GlyphHoldError("Memory title confirmation did not match; delete was not performed.")
-    await client.delete_memory(memory_id=memory_id)
-    return {"deleted": memory_id}
+async def get_memory_context(session_id: str) -> dict[str, Any]:
+    """Read active context and confirmed placement guidance for one conversation."""
+    return await _client().get_context(session_id=session_id)
 
 
 @mcp.tool()
 @stable_tool
-async def search_secrets(
-    query: str | None = None,
-    service: str | None = None,
-    host: str | None = None,
-    scope: str | None = None,
-    limit: SecretLimit = 100,
-    offset: SecretOffset = 0,
-) -> list[dict[str, Any]]:
-    """Search/list secret metadata only. Secret values are not returned by this tool."""
-    return await _client().list_secrets(
-        query=query,
-        service=service,
-        host=host,
-        scope=scope,
-        limit=limit,
-        offset=offset,
-    )
+async def set_memory_context(session_id: str, space_id: str) -> dict[str, Any]:
+    """Change one conversation's active space without changing connection default."""
+    return await _client().set_context(session_id=session_id, space_id=space_id)
 
 
 @mcp.tool()
 @stable_tool
-async def get_secret_metadata(id_or_name: str) -> dict[str, Any]:
-    """Get secret metadata only by id or name. The secret value is not returned."""
-    return await _client().get_secret_metadata(id_or_name=id_or_name)
+async def get_placement_guidance(space_id: str | None = None) -> dict[str, Any]:
+    """Read owner-confirmed guidance for placing new memories."""
+    return await _client().placement_guidance(space_id=space_id)
+
+
+@mcp.tool()
+@stable_tool
+async def search_secrets(query: str = "", space_id: str | None = None) -> dict[str, Any]:
+    """Search secret metadata; no values are returned."""
+    return await _client().search_secrets(query=query, space_id=space_id)
+
+
+@mcp.tool()
+@stable_tool
+async def get_secret_metadata(id_or_name: str, space_id: str | None = None) -> dict[str, Any]:
+    """Inspect one secret without revealing its value."""
+    fields = {"id_or_name": id_or_name}
+    if space_id:
+        fields["space_id"] = space_id
+    return await _client().get_secret_metadata(**fields)
 
 
 @mcp.tool()
@@ -384,103 +329,21 @@ async def get_secret_metadata(id_or_name: str) -> dict[str, Any]:
 async def create_secret(
     name: str,
     value: str,
+    space_id: str,
     description: str | None = None,
     value_type: SecretValueType = "text",
-    service: str | None = None,
-    host: str | None = None,
-    scope: str | None = None,
-    tags: list[str] | None = None,
-    allowed_agents: list[str] | None = None,
-    allowed_tools: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create encrypted Glyph Hold secret metadata and value."""
+    """Store reusable operational credentials in an explicit permitted space."""
     return await _client().create_secret(
-        name=name,
-        value=value,
-        description=description,
-        value_type=value_type,
-        service=service,
-        host=host,
-        scope=scope,
-        tags=tags,
-        allowed_agents=allowed_agents,
-        allowed_tools=allowed_tools,
+        name=name, value=value, space_id=space_id, description=description, value_type=value_type
     )
 
 
 @mcp.tool()
 @stable_tool
-async def update_secret(
-    id_or_name: str,
-    name: str | None = None,
-    value: str | None = None,
-    description: str | None = None,
-    value_type: SecretValueType | None = None,
-    service: str | None = None,
-    host: str | None = None,
-    scope: str | None = None,
-    tags: list[str] | None = None,
-    allowed_agents: list[str] | None = None,
-    allowed_tools: list[str] | None = None,
-) -> dict[str, Any]:
-    """Update secret metadata, access restrictions, or value only when the user intends it."""
-    return await _client().update_secret(
-        id_or_name=id_or_name,
-        name=name,
-        value=value,
-        description=description,
-        value_type=value_type,
-        service=service,
-        host=host,
-        scope=scope,
-        tags=tags,
-        allowed_agents=allowed_agents,
-        allowed_tools=allowed_tools,
-    )
-
-
-@mcp.tool()
-@stable_tool
-async def delete_secret(id_or_name: str, confirm_name: str) -> dict[str, str]:
-    """Permanently delete a secret after confirm_name exactly matches the current secret name."""
-    client = _client()
-    secret = await client.get_secret_metadata(id_or_name=id_or_name)
-    if secret["name"] != confirm_name:
-        raise GlyphHoldError("Secret name confirmation did not match; delete was not performed.")
-    await client.delete_secret(id_or_name=id_or_name)
-    return {"deleted": secret["name"]}
-
-
-@mcp.tool()
-@stable_tool
-async def reveal_secret(
-    id_or_name: str,
-    requesting_agent: str | None = "codex",
-    tool: str | None = None,
-    purpose: str = "MCP reveal requested by Codex",
-) -> dict[str, Any]:
-    """Reveal a secret value only when the user explicitly asks for the value."""
-    return await _client().reveal_secret(
-        id_or_name=id_or_name,
-        requesting_agent=requesting_agent,
-        tool=tool,
-        purpose=purpose,
-    )
-
-
-@mcp.tool()
-@stable_tool
-async def reveal_secret_env(
-    scope: str | None = None,
-    requesting_agent: str | None = "codex",
-    purpose: str = "MCP env reveal requested by Codex",
-) -> dict[str, Any]:
-    """Reveal multiple secret values as env-style values only when the user explicitly asks."""
-    return await _client().reveal_secret_env(
-        scope=scope,
-        requesting_agent=requesting_agent,
-        purpose=purpose,
-    )
+async def reveal_secret(id_or_name: str, space_id: str | None = None) -> dict[str, Any]:
+    """Reveal one secret for an explicit user request or authorised task requiring it."""
+    return await _client().reveal_secret(id_or_name=id_or_name, space_id=space_id)
 
 
 def main() -> None:

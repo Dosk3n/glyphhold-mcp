@@ -1,208 +1,53 @@
-# Glyph Hold MCP
+# Glyph Hold MCP for GH2
 
-Local stdio MCP server for connecting Codex and other MCP clients to Glyph Hold.
+Version 2.0.0 is a local stdio MCP server for Codex and other MCP clients. It uses
+Glyph Hold 2's public `/api/v2` HTTP API and never opens the server's SQLite file.
+Upgrade this connector alongside the server; version 0.1.0 is for GH1.
 
-This repo is intentionally separate from Glyph Hold. It does not access the
-SQLite database directly. It talks to a running Glyph Hold instance through the
-public `/api/v1` HTTP API.
+## Setup
 
-## Requirements
-
-- Python 3.12+
-- A running Glyph Hold instance
-- A Glyph Hold API key created from the dashboard
-
-Example URL:
-
-```text
-GLYPHHOLD_URL=https://glyphhold.example.com
-```
-
-## Local Setup
-
-Choose a place on your machine where you keep local tool repos. Clone this repo
-there:
-
-```bash
-cd ~/coding_projects
-git clone git@github.com:Dosk3n/glyphhold-mcp.git
-cd glyphhold-mcp
-```
-
-Create the local Python environment:
-
-```bash
-python3.12 -m venv .venv
-. .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-Create the local environment file:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```bash
-nano .env
-```
-
-Set:
+Use Python 3.12+ and install locally with `pip install -e ".[dev]"`. The FastMCP
+SDK dependency is pinned below major version 2 because that major changes the
+server API. Configure `.env` or your MCP host environment:
 
 ```text
 GLYPHHOLD_URL=https://your-glyphhold-host.example.com
 GLYPHHOLD_API_KEY=gh_live_xxxxxxxxxxxxxxxxx
 ```
 
-Create `GLYPHHOLD_API_KEY` from the Glyph Hold dashboard.
+Existing timeout/TLS options in `.env.example` remain supported. In GH2 create
+the API key, assign its explicit space grants and default destination, and grant
+only required scopes: `memories:read`, `memories:write`, `secrets:write`, and
+`secrets:reveal`. API-level admin scope does not grant all spaces. Run
+`glyphhold-mcp` as the stdio command in your host's MCP configuration, with the
+checkout's environment and Python executable. No live host configuration is
+changed by this source upgrade.
 
-Useful scopes:
+## Contract
 
-- `memories:read`
-- `memories:write`
-- `secrets:write`
-- `secrets:reveal`
+- `glyphhold_capabilities` reports permitted spaces and the connection default.
+- `prefetch_memories` returns bounded active/General context with IDs, versions,
+  ownership, provenance and freshness.
+- `search_memories` accepts explicit broader discovery. A result in another space
+  does not change the write destination.
+- `create_memory` requires a stable idempotency key. Reuse it for retries.
+- `update_memory`, `archive_memory`, `move_memory` and `restore_memory_revision`
+  require the last-read expected version. Reread after HTTP 409 conflicts.
+- `get_memory_context`, `set_memory_context` and `get_placement_guidance` support
+  deliberate per-conversation routing and owner-confirmed associations. Supply
+  the same unique session ID to context, search/recall and create operations.
+- Secret metadata and explicit per-secret reveal remain separate and work with
+  built-in or Vaultwarden providers. Secret creation requires an explicit space.
+- Destructive delete, bulk environment reveal and lexical conflict claims are
+  removed from this GH2 surface.
 
-Only grant `secrets:reveal` if you want the MCP client to be able to reveal
-secret values after an explicit user request.
+Tool failures remain structured ordinary payloads so a missing record or conflict
+never invalidates the entire connector. Source content and credentials are not
+included in error logs. Tool availability alone cannot guarantee pre-response
+recall: configure the host workflow or use a native memory-provider integration.
 
-## Codex CLI Config
-
-Find the full path to the cloned repo:
-
-```bash
-pwd
-```
-
-If `pwd` prints:
-
-```text
-/home/you/coding_projects/glyphhold-mcp
-```
-
-then add this to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.glyphhold]
-command = "/home/you/coding_projects/glyphhold-mcp/.venv/bin/python"
-args = ["-m", "glyphhold_mcp.server"]
-cwd = "/home/you/coding_projects/glyphhold-mcp"
-```
-
-Use your real path from `pwd`. The important parts are:
-
-```text
-command = <repo path>/.venv/bin/python
-cwd     = <repo path>
-```
-
-You do not need to put the API key in Codex config. The MCP server loads
-`GLYPHHOLD_URL` and `GLYPHHOLD_API_KEY` from the `.env` file in the cloned repo.
-
-Start Codex from any project as normal.
-
-Inside Codex, run:
-
-```text
-/mcp
-```
-
-You should see the `glyphhold` MCP server connected.
-
-## TLS Certificate Errors
-
-If a tool returns an error like:
-
-```text
-[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed
-```
-
-Python does not trust the certificate chain for your Glyph Hold URL.
-
-Best fix: point the MCP server at the CA bundle that signs your internal
-certificate:
-
-```text
-GLYPHHOLD_CA_BUNDLE=/path/to/ca-bundle.pem
-```
-
-For a trusted private test deployment, you can disable verification in `.env`:
-
-```text
-GLYPHHOLD_VERIFY_SSL=false
-```
-
-Do not use `GLYPHHOLD_VERIFY_SSL=false` for an internet-facing deployment.
-
-## Updating
-
-To update the local MCP server later:
-
-```bash
-cd ~/coding_projects/glyphhold-mcp
-git pull
-. .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-## Tools
-
-Health and categories:
-
-- `glyphhold_health`
-- `list_categories`
-
-Memory tools:
-
-- `list_memories`
-- `get_memory`
-- `search_memories`
-- `prefetch_memories`
-- `find_similar_memories`
-- `prepare_memory_write`
-- `create_memory`
-- `update_memory`
-- `update_memory_confidence`
-- `archive_memory`
-- `supersede_memory`
-- `list_memory_revisions`
-- `restore_memory_revision`
-- `delete_memory`
-
-Secret tools:
-
-- `search_secrets`
-- `get_secret_metadata`
-- `create_secret`
-- `update_secret`
-- `delete_secret`
-- `reveal_secret`
-- `reveal_secret_env`
-
-Secret values are only returned by `reveal_secret` and `reveal_secret_env`.
-Permanent deletes require an exact confirmation value.
-
-## Stable Error Responses
-
-Successful tool responses keep their native Glyph Hold payloads. Recoverable
-HTTP, transport, timeout, configuration, and response errors are returned as
-normal MCP results so one failed request cannot invalidate the client's MCP
-connection:
-
-```json
-{
-  "ok": false,
-  "error": {
-    "type": "not_found",
-    "message": "Glyph Hold request failed: HTTP 404: Secret not found",
-    "retryable": false,
-    "status": 404
-  }
-}
-```
-
-Errors are logged to stderr using the tool name, error type, status, and retry
-classification. Authorization headers, API keys, and secret values are never
-included in MCP error payloads or diagnostic logs.
+Run `python -m pytest tests`. Tests validate tool schemas, error containment,
+transport safety, idempotent/versioned writes and explicit reveal paths. The GH2
+checkout also has local cross-repository ASGI conformance tests covering this
+client, Hermes and Nexus against the actual backend. Live host setup and network
+connectivity still need a deployment rehearsal.

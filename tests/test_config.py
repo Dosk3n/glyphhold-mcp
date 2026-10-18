@@ -14,13 +14,9 @@ def test_load_settings_reads_dotenv_from_working_directory(
     monkeypatch.delenv("GLYPHHOLD_API_KEY", raising=False)
     monkeypatch.delenv("GLYPHHOLD_VERIFY_SSL", raising=False)
     (tmp_path / ".env").write_text(
-        "\n".join(
-            [
-                "GLYPHHOLD_URL=https://glyphhold.example.com",
-                "GLYPHHOLD_API_KEY=gh_live_test",
-                "GLYPHHOLD_VERIFY_SSL=false",
-            ]
-        )
+        "GLYPHHOLD_URL=https://glyphhold.example.com\n"
+        "GLYPHHOLD_API_KEY=gh_live_test\n"
+        "GLYPHHOLD_VERIFY_SSL=false"
     )
 
     settings = load_settings()
