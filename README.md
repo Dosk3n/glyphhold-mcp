@@ -1,4 +1,4 @@
-# Glyph Hold MCP for GH2
+# Glyph Hold MCP connector
 
 Version 2.0.0 is a local stdio MCP server for Codex and other MCP clients. It uses
 Glyph Hold 2's public `/api/v2` HTTP API and never opens the server's SQLite file.
