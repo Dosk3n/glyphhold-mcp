@@ -1,6 +1,6 @@
 # Glyph Hold MCP connector
 
-Version 2.1.3 is a local stdio MCP server for Codex and other MCP clients. It uses
+Version 2.2.0 is a local stdio MCP server for Codex and other MCP clients. It uses
 Glyph Hold 2's public `/api/v2` HTTP API and never opens the server's SQLite file.
 Upgrade this connector alongside the server; version 0.1.0 is for GH1.
 
@@ -88,3 +88,11 @@ Use `provider_name=builtin` for the remaining migration checklist.
 without changing either provider. Known provider failure codes produce safe,
 actionable tool errors; arbitrary error bodies are not echoed. An uncertain
 write requires destination inspection before retrying.
+
+## Selective recall (2.2)
+
+Automatic recall supplies a small relevant starting context. An empty result does
+not mean that no matching memories exist; even a nonempty result can concern the
+wrong entity or space. Search explicitly for missing personal facts, try shorter
+terms or synonyms, and broaden deliberately for another permitted space. Read the
+full record by ID when an excerpt omits evidence. Tool parameters are unchanged.

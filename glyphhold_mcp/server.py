@@ -162,7 +162,9 @@ async def search_memories(
     limit: MemoryLimit = 10,
     max_chars: int = 12000,
 ) -> dict[str, Any]:
-    """Search active space; explicitly broaden across permitted spaces as needed."""
+    """Search active space; try shorter terms or synonyms when needed. Explicitly
+    broaden across permitted spaces for other contexts; this does not change writes.
+    """
     return await _client().search_memories(
         query=query,
         space_id=space_id,
@@ -182,7 +184,10 @@ async def prefetch_memories(
     max_memories: PrefetchMemoryLimit = 5,
     max_chars: PrefetchChars = 2400,
 ) -> dict[str, Any]:
-    """Recall bounded, traceable active and permitted General context."""
+    """Recall bounded active and General context. Check entity and space: even nonempty
+    recall may be insufficient. Search explicitly when needed and get full records by
+    ID when excerpts omit required evidence.
+    """
     return await _client().prefetch_memories(
         message=message,
         space_id=space_id,
